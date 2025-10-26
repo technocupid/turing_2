@@ -37,4 +37,4 @@ def test_pay_order_flow(client, seeded_admin):
     resp = client.get(f"/api/orders/{order_id}", headers=headers_user)
     assert resp.status_code == 200, resp.text
     order_after = resp.json()
-    assert order_after.get("status") == "placed"
+    assert order_after.get("status") == "paid"

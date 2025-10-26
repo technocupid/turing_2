@@ -76,8 +76,7 @@ class FileBackedDB:
         Write DataFrame to `path` WITHOUT acquiring file lock.
         Use this only when the caller already holds the lock.
         """
-        if type(path) == str:
-            path = Path(path)
+        path = self._file_path(str(path))
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.suffix.lower() == ".csv" or path.suffix == "":
             df.to_csv(path, index=False)
@@ -151,6 +150,7 @@ class FileBackedDB:
             if not mask.any():
                 return None
             for k, v in updates.items():
+                print(k,v)
                 df.loc[mask, k] = v
             self._write_df_nolock(table, df)
             row = df[mask].iloc[0].to_dict()
