@@ -1,4 +1,11 @@
 # app/api/routes/products.py
+import os
+import json
+from fastapi import UploadFile, File
+from app.config import settings
+from app.utils.images import save_image_upload, list_product_images, delete_product_image
+
+
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.deps import get_db, get_current_active_user, require_admin
@@ -88,3 +95,85 @@ def delete_product(product_id: str):
     if not ok:
         raise HTTPException(status_code=404, detail="Product not found")
     return {"ok": True}
+
+@router.post("/{product_id}/upload-image", dependencies=[Depends(require_admin)])
+async def upload_product_image(product_id: str, file: UploadFile = File(...)):
+    """
+    Upload an image for a product (admin only).
+    Saves original + variants and appends the filename(s) to product.image_filenames (JSON list).
+    """
+    # ensure product exists
+    row = db.get_record("products", "id", product_id) or db.get_record("products", "product_id", product_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # ensure image dir exists
+    image_dir = settings.image_dir
+    # save file and generate thumbnails
+    saved = await save_image_upload(file, product_id, image_dir)
+    # update product record: append original filename to image_filenames list stored as JSON
+    cur = row.get("image_filenames") or row.get("image_filename") or ""
+    try:
+        cur_list = json.loads(cur) if cur else []
+        if not isinstance(cur_list, list):
+            cur_list = [cur] if cur else []
+    except Exception:
+        cur_list = [cur] if cur else []
+
+    cur_list.append(saved["original"])
+    # optionally also append variants if desired:
+    # cur_list.extend(saved["variants"])
+    updates = {"image_filename": json.dumps(cur_list)}
+    db.update_record("products", "id", product_id, updates)
+    # Build accessible URLs
+    urls = [f"/{settings.image_dir.rstrip('/')}/products/{product_id}/{fname}" for fname in cur_list]
+    return {"ok": True, "filenames": cur_list, "urls": urls, "saved": saved}
+
+
+@router.get("/{product_id}/images", response_model=List[str])
+def get_product_images(product_id: str):
+    """
+    List image URLs for a product (public).
+    """
+    row = db.get_record("products", "id", product_id) or db.get_record("products", "product_id", product_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Product not found")
+    image_dir = settings.image_dir
+    cur = row.get("image_filenames") or row.get("image_filename") or ""
+    try:
+        cur_list = json.loads(cur) if cur else []
+        if not isinstance(cur_list, list):
+            cur_list = [cur] if cur else []
+    except Exception:
+        cur_list = [cur] if cur else []
+
+    urls = [f"/{image_dir.rstrip('/')}/products/{product_id}/{fname}" for fname in cur_list]
+    return urls
+
+
+@router.delete("/{product_id}/images/{filename}", dependencies=[Depends(require_admin)])
+def delete_product_image_route(product_id: str, filename: str):
+    """
+    Delete an image file and remove from product's image_filenames array (admin only).
+    """
+    row = db.get_record("products", "id", product_id) or db.get_record("products", "product_id", product_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    image_dir = settings.image_dir
+    ok = delete_product_image(image_dir, product_id, filename)
+    if not ok:
+        raise HTTPException(status_code=404, detail="File not found or could not be deleted")
+
+    # remove from product record
+    cur = row.get("image_filenames") or row.get("image_filename") or ""
+    try:
+        cur_list = json.loads(cur) if cur else []
+        if not isinstance(cur_list, list):
+            cur_list = [cur] if cur else []
+    except Exception:
+        cur_list = [cur] if cur else []
+
+    cur_list = [f for f in cur_list if f != filename]
+    db.update_record("products", "id", product_id, {"image_filenames": json.dumps(cur_list)})
+    return {"ok": True, "remaining": cur_list}

@@ -1,6 +1,6 @@
 # app/schemas/product.py
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import List, Optional
 
 
 class ProductCreate(BaseModel):
@@ -31,3 +31,4 @@ class ProductOut(BaseModel):
     image_filename: Optional[str]
     created_by: Optional[str]
     created_at: Optional[str]
+    image_filenames: Optional[List[str]] = None

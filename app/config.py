@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     ORDERS_FILE: str = "orders.csv"
     CARTS_FILE: str = "carts.csv"
 
+    image_dir: str = "static/images"
+
     # If you want to use Excel files, set the file names to .xlsx in .env or edit these values.
     # Example .env:
     # DATA_DIR=./data
