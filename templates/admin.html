@@ -1,0 +1,25 @@
+### FILE: templates/admin.html
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Admin - Items</title>
+  </head>
+  <body>
+    <h1>Admin panel</h1>
+    <a href="/docs">API docs</a>
+    <table border="1" cellpadding="6">
+      <tr><th>ID</th><th>Title</th><th>Category</th><th>Price</th><th>Stock</th><th>Image</th></tr>
+      {% for it in items %}
+      <tr>
+        <td>{{it.item_id}}</td>
+        <td>{{it.title}}</td>
+        <td>{{it.category}}</td>
+        <td>{{it.price}}</td>
+        <td>{{it.stock}}</td>
+        <td>{% if it.image_filename %}<img src="/items/image/{{it.image_filename}}" width="80" />{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </body>
+</html>
