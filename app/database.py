@@ -49,6 +49,7 @@ class FileBackedDB:
             "products": settings.PRODUCTS_FILE,
             "orders": settings.ORDERS_FILE,
             "carts": settings.CARTS_FILE,
+            "wishlists": settings.WISHLISTS_FILE,  # support wishlists table
         }
         filename = mapping.get(table, f"{table}.csv")
         return Path(self.data_dir) / Path(filename)
@@ -97,7 +98,7 @@ class FileBackedDB:
             # else:
             #     # try CSV by default
             #     df.to_csv(path, index=False)
-            self._write_df_nolock(path, df)
+            self._write_df_nolock(table, df)
 
     # --- high-level CRUD primitives ---
 

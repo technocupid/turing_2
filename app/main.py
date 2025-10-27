@@ -12,6 +12,7 @@ from app.database import db
 from app.api.routes import auth as auth_routes
 from app.api.routes import products as product_routes
 from app.api.routes import orders as order_routes
+from app.api.routes import wishlist as wishlist_routes
 from app.api.deps import oauth2_scheme
 
 logger = logging.getLogger("uvicorn.error")
@@ -65,6 +66,7 @@ templates = Jinja2Templates(directory="templates") if os.path.isdir("templates")
 app.include_router(auth_routes.router)
 app.include_router(product_routes.router)
 app.include_router(order_routes.router)
+app.include_router(wishlist_routes.router)
 
 
 @app.get("/", tags=["root"])
