@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     ORDERS_FILE: str = "orders.csv"
     CARTS_FILE: str = "carts.csv"
     WISHLISTS_FILE: str = "wishlists.csv"  # added wishlist file mapping
+    REVIEWS_FILE: str = "reviews.csv"      # added reviews file mapping
 
     image_dir: str = "static/images"
 
