@@ -49,7 +49,8 @@ class FileBackedDB:
             "products": settings.PRODUCTS_FILE,
             "orders": settings.ORDERS_FILE,
             "carts": settings.CARTS_FILE,
-            "wishlists": settings.WISHLISTS_FILE,  # support wishlists table
+            "wishlists": settings.WISHLISTS_FILE,
+            "reviews": settings.REVIEWS_FILE,   # support reviews table
         }
         filename = mapping.get(table, f"{table}.csv")
         return Path(self.data_dir) / Path(filename)
