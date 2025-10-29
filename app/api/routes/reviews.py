@@ -79,28 +79,3 @@ def delete_review(product_id: str, review_id: str, user_id: str = Depends(_curre
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete")
     return {}
-
-    """
-    Delete admin response attached to a review.
-    """
-    rec = db.get_record("reviews", "id", review_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Review not found")
-    if str(rec.get("product_id")) != str(product_id):
-        raise HTTPException(status_code=400, detail="Review does not belong to product")
-
-    if not rec.get("response_body"):
-        raise HTTPException(status_code=404, detail="Response not found")
-
-    # remove response fields and persist
-    rec.pop("response_body", None)
-    rec.pop("response_author_id", None)
-    rec.pop("response_created_at", None)
-    rec.pop("response_updated_at", None)
-
-    if not db.delete_record("reviews", "id", review_id):
-        raise HTTPException(status_code=500, detail="Failed to update review")
-    saved = db.create_record("reviews", rec, id_field="id")
-    if not saved:
-        raise HTTPException(status_code=500, detail="Failed to persist review")
-    return {}
