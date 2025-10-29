@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Form
 from fastapi.security import OAuth2PasswordRequestForm
-from passlib.context import CryptContext
+from app.core.security import hash_password, verify_password
 from jose import jwt
 
 import os
@@ -14,9 +14,6 @@ from app.schemas.user import TokenResponse, UserOut
 from app.database import FileBackedDB
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-
-# password hashing context (must match tests' hashing)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # token lifetime (minutes)
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
@@ -44,10 +41,10 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
     if not stored_hash:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     try:
-        if not pwd_context.verify(form_data.password, stored_hash):
+        if not verify_password(form_data.password, stored_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     except Exception:
-        # passlib UnknownHashError or other verification errors -> treat as invalid credentials
+        # treat verification errors as invalid credentials
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     subject = str(user.get("id") or user.get("username") or user.get("email"))
     access_token = _create_access_token(subject=subject)
@@ -66,7 +63,7 @@ def login_form(response: Response, username: str = Form(...), password: str = Fo
     if not stored_hash:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     try:
-        if not pwd_context.verify(password, stored_hash):
+        if not verify_password(password, stored_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -103,7 +100,7 @@ def register(user: Dict[str, Any]):
     password = user.get("password")
     if not username or not password or not email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="username, email and password required")
-    hashed = pwd_context.hash(password)
+    hashed = hash_password(password)
     row = db.create_record("users", {"username": username, "email": email, "password_hash": hashed, "is_admin": user.get("is_admin", False), "full_name": user.get("full_name")}, id_field="id")
     # build a deterministic user output shape expected by tests/schemas
     user_out = {

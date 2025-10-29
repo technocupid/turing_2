@@ -8,7 +8,6 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from passlib.context import CryptContext
 
 # ensure project root is importable
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -31,7 +30,7 @@ app_database.DATA_DIR.mkdir(parents=True, exist_ok=True)
 # now import the FastAPI app
 from app.main import app  # noqa: E402
 
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+from app.core.security import hash_password
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +61,7 @@ def create_admin_in_db(username="admin", password="adminpass", email="admin@exam
     Utility to create an admin user in the file-backed DB.
     Returns the created row dict.
     """
-    hashed = pwd_ctx.hash(password)
+    hashed = hash_password(password)
     row = app_database.db.create_record(
         "users",
         {"username": username, "email": email, "password_hash": hashed, "is_admin": True},
@@ -83,7 +82,7 @@ def temp_user():
     Returns {"row": <user_row>, "password": <plain_password>, "username": ..., "email": ...}
     """
     password = "testpass"
-    hashed = pwd_ctx.hash(password)
+    hashed = hash_password(password)
     user = app_database.db.create_record(
         "users",
         {"username": f"user_{os.urandom(4).hex()}", "email": f"user_{os.urandom(4).hex()}@example.test", "password_hash": hashed, "is_admin": False},

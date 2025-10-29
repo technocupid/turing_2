@@ -7,7 +7,7 @@ from datetime import datetime
 
 import pytest
 from PIL import Image
-from passlib.context import CryptContext
+from app.core.security import hash_password
 
 # ensure project root is importable (conftest may already do this)
 from app.database import db as file_db
@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 client = TestClient(app)
-pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def make_sample_jpeg_bytes(size=(200, 200), color=(180, 120, 60)):
@@ -46,7 +45,7 @@ def create_admin_in_db(username="admin", password="adminpass", email="admin@exam
     Create an admin user directly in the file-backed DB using hashed password.
     Returns the created row dict.
     """
-    hashed = pwd_ctx.hash(password)
+    hashed = hash_password(password)
     row = {
         "username": username,
         "email": email,
