@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 
 from app.database import db
-from app.api.deps import oauth2_scheme, require_admin
+from app.api.deps import oauth2_scheme
 
 router = APIRouter(prefix="/api/products", tags=["reviews"])
 
@@ -78,90 +78,4 @@ def delete_review(product_id: str, review_id: str, user_id: str = Depends(_curre
     ok = db.delete_record("reviews", "id", review_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete")
-    return {}
-
-# --- Review response (admin-only) endpoints ---
-@router.post("/{product_id}/reviews/{review_id}/response", status_code=201)
-def create_review_response(product_id: str, review_id: str, payload: Dict[str, Any] = Body(...), admin_user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Create a single admin response to a review. Only one response per review allowed.
-    Body: { "body": "response text" }
-    """
-    rec = db.get_record("reviews", "id", review_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Review not found")
-    if str(rec.get("product_id")) != str(product_id):
-        raise HTTPException(status_code=400, detail="Review does not belong to product")
-
-    # disallow if response already exists
-    if rec.get("response_body"):
-        raise HTTPException(status_code=400, detail="Response already exists for this review")
-
-    response_body = (payload.get("body") or "").strip()
-    if not response_body:
-        raise HTTPException(status_code=400, detail="Response body required")
-
-    # attach response fields onto review record and persist (replace record)
-    rec["response_body"] = response_body
-    rec["response_author_id"] = admin_user.get("id")
-    rec["response_created_at"] = datetime.utcnow().isoformat(sep=" ")
-    # persist update by deleting and recreating with same id
-    if not db.delete_record("reviews", "id", review_id):
-        raise HTTPException(status_code=500, detail="Failed to update review")
-    saved = db.create_record("reviews", rec, id_field="id")
-    return saved
-
-@router.put("/{product_id}/reviews/{review_id}/response", status_code=200)
-def edit_review_response(product_id: str, review_id: str, payload: Dict[str, Any] = Body(...), admin_user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Edit existing admin response to a review.
-    Body: { "body": "new response text" }
-    """
-    rec = db.get_record("reviews", "id", review_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Review not found")
-    if str(rec.get("product_id")) != str(product_id):
-        raise HTTPException(status_code=400, detail="Review does not belong to product")
-
-    if not rec.get("response_body"):
-        raise HTTPException(status_code=404, detail="Response not found")
-
-    response_body = (payload.get("body") or "").strip()
-    if not response_body:
-        raise HTTPException(status_code=400, detail="Response body required")
-
-    rec["response_body"] = response_body
-    rec["response_author_id"] = admin_user.get("id")
-    rec["response_updated_at"] = datetime.utcnow().isoformat(sep=" ")
-
-    if not db.delete_record("reviews", "id", review_id):
-        raise HTTPException(status_code=500, detail="Failed to update review")
-    saved = db.create_record("reviews", rec, id_field="id")
-    return saved
-
-@router.delete("/{product_id}/reviews/{review_id}/response", status_code=204)
-def delete_review_response(product_id: str, review_id: str, admin_user: Dict[str, Any] = Depends(require_admin)):
-    """
-    Delete admin response attached to a review.
-    """
-    rec = db.get_record("reviews", "id", review_id)
-    if not rec:
-        raise HTTPException(status_code=404, detail="Review not found")
-    if str(rec.get("product_id")) != str(product_id):
-        raise HTTPException(status_code=400, detail="Review does not belong to product")
-
-    if not rec.get("response_body"):
-        raise HTTPException(status_code=404, detail="Response not found")
-
-    # remove response fields and persist
-    rec.pop("response_body", None)
-    rec.pop("response_author_id", None)
-    rec.pop("response_created_at", None)
-    rec.pop("response_updated_at", None)
-
-    if not db.delete_record("reviews", "id", review_id):
-        raise HTTPException(status_code=500, detail="Failed to update review")
-    saved = db.create_record("reviews", rec, id_field="id")
-    if not saved:
-        raise HTTPException(status_code=500, detail="Failed to persist review")
     return {}
