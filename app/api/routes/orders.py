@@ -7,8 +7,9 @@ import json
 from app.api.deps import get_db, get_current_active_user, require_admin
 from app.database import FileBackedDB
 from app.models.order import Order, OrderItem
-from app.models.cart import Cart, CartItem
-from app.services.payment import process_payment, PaymentError
+from app.core.state_machine import InvalidTransition, OptimisticLockError
+from app.services.payment import PaymentError, process_payment
+
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -188,4 +189,64 @@ def set_order_status(order_id: str, payload: Dict[str, Any] = Body(...)):
     updated = db.update_record("orders", "id", order_id, {"status": new_status})
     if not updated:
         raise HTTPException(status_code=404, detail="Order not found")
+    return {"ok": True, "order": updated}
+
+
+@router.post("/{order_id}/transition")
+def transition_order_status(
+    order_id: str,
+    payload: Dict[str, Any] = Body(...),  # { "status": "shipped", "expected_version": 0 (optional) }
+    current_user: Dict[str, Any] = Depends(get_current_active_user),
+):
+    """
+    Transition an order to another state using the Order state machine.
+    Body: { "status": "<target>", "expected_version": <int, optional> }
+    Only the order owner or an admin may perform transitions.
+    Returns the updated order record.
+    """
+    new_status = (payload.get("status") or "").strip()
+    if not new_status:
+        raise HTTPException(status_code=400, detail="status required")
+
+    row = db.get_record("orders", "id", order_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # authorization: owner (by username) or admin
+    username = current_user.get("username")
+    is_admin = current_user.get("is_admin", False)
+    if isinstance(is_admin, str):
+        is_admin = is_admin.strip().lower() in ("1", "true", "yes", "y", "t")
+    owner = str(row.get("user_id") or row.get("username") or "")
+    if not is_admin and owner != str(username):
+        raise HTTPException(status_code=403, detail="Not allowed to transition this order")
+
+    # reconstruct domain Order and attempt transition
+    try:
+        order = Order.from_dict(row)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to load order")
+
+    try:
+        order.transition_to(
+            new_status,
+            actor=str(current_user.get("username") or current_user.get("id") or ""),
+            meta=payload.get("meta"),
+            expected_version=payload.get("expected_version"),
+        )
+    except InvalidTransition as it:
+        raise HTTPException(status_code=400, detail=str(it))
+    except OptimisticLockError as ol:
+        raise HTTPException(status_code=409, detail=str(ol))
+
+    # persist changes (update key fields)
+    updates = {
+        "status": order.status,
+        "status_history": json.dumps(order.status_history or [], ensure_ascii=False),
+        "version": int(order.version),
+    }
+    updated = db.update_record("orders", "id", order_id, updates)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to persist order update")
+
     return {"ok": True, "order": updated}

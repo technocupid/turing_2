@@ -2,6 +2,7 @@
 env
 _*
 data/*
+*.png
 __pycache__/
 *.py[codz]
 *$py.class
