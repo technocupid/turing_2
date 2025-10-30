@@ -9,6 +9,7 @@ from app.database import FileBackedDB
 from app.models.order import Order, OrderItem
 from app.core.state_machine import InvalidTransition, OptimisticLockError
 from app.services.payment import PaymentError, process_payment, process_refund
+from app.schemas.order import OrderCreate, OrderResponse, PaymentRequest, CancelRequest
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -30,9 +31,9 @@ def _compute_total_from_items(items: List[Dict[str, Any]]) -> float:
     return float(total)
 
 
-@router.post("/", status_code=201)
+@router.post("/", status_code=201, response_model=OrderResponse)
 def create_order(
-    payload: Dict[str, Any] = Body(...),
+    payload: OrderCreate = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_active_user),
 ):
     """
@@ -47,23 +48,20 @@ def create_order(
     """
     # resolve items
     items_payload = []
-    if payload.get("cart_id"):
-        cart_row = db.get_record("carts", "id", payload["cart_id"])
-        if not cart_row:
+    if payload.cart_id:
+        cart = db.get_record("carts", "id", payload.cart_id)
+        if not cart:
             raise HTTPException(status_code=404, detail="Cart not found")
-        # cart_row['items'] expected to be JSON string
-        raw = cart_row.get("items") or "[]"
-        try:
-            items_payload = json.loads(raw)
-        except Exception:
-            items_payload = []
-    elif payload.get("items"):
-        items_payload = payload.get("items", [])
+        # cart.from_dict -> normalize items shape if necessary
+        items_payload = cart.get("items") or []
+    elif payload.items:
+        # pydantic already validated item shapes
+        items_payload = [it.dict() for it in payload.items]
     else:
-        raise HTTPException(status_code=400, detail="No items provided (cart_id or items required)")
+        raise HTTPException(status_code=400, detail="Must pass cart_id or items")
 
     if not isinstance(items_payload, list) or len(items_payload) == 0:
-        raise HTTPException(status_code=400, detail="Cart/items empty")
+        raise HTTPException(status_code=400, detail="Order must contain at least one item")
 
     # compute total
     total_amount = _compute_total_from_items(items_payload)
@@ -75,7 +73,7 @@ def create_order(
         items=[OrderItem.from_dict(it) if isinstance(it, dict) else it for it in items_payload],
         total_amount=total_amount,
         status="placed",
-        shipping_address=payload.get("shipping_address") or payload.get("address") or "",
+        shipping_address=payload.shipping_address or "",
         created_at=datetime.utcnow(),
     )
 
@@ -121,7 +119,7 @@ def get_order(order_id: str, current_user: Dict[str, Any] = Depends(get_current_
 @router.post("/{order_id}/pay")
 def pay_order(
     order_id: str,
-    payment: Dict[str, Any] = Body(...),  # e.g. {"type":"card","card_last4":"4242"}
+    payment: PaymentRequest = Body(...),  # validated payment payload
     current_user: Dict[str, Any] = Depends(get_current_active_user),
 ):
     """
@@ -150,7 +148,7 @@ def pay_order(
 
     # call payment service
     try:
-        result = process_payment(amount, payment)
+        result = process_payment(amount, payment.dict())
     except PaymentError as e:
         raise HTTPException(status_code=502, detail=f"Payment gateway error: {e}")
 
@@ -181,7 +179,7 @@ def pay_order(
 @router.post("/{order_id}/cancel")
 def cancel_order(
     order_id: str,
-    payload: Dict[str, Any] = Body(None),  # optional meta/expected_version
+    payload: Optional[CancelRequest] = Body(None),  # typed cancel request
     current_user: Dict[str, Any] = Depends(get_current_active_user),
 ):
     """
@@ -244,8 +242,8 @@ def cancel_order(
         order.transition_to(
             "cancelled",
             actor=str(current_user.get("username") or current_user.get("id") or ""),
-            meta=payload.get("meta") if payload else None,
-            expected_version=payload.get("expected_version") if payload else None,
+            meta=payload.meta if payload else None,
+            expected_version=payload.expected_version if payload else None,
         )
     except InvalidTransition as it:
         raise HTTPException(status_code=400, detail=str(it))
