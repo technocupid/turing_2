@@ -8,8 +8,7 @@ from app.api.deps import get_db, get_current_active_user, require_admin
 from app.database import FileBackedDB
 from app.models.order import Order, OrderItem
 from app.core.state_machine import InvalidTransition, OptimisticLockError
-from app.services.payment import PaymentError, process_payment
-
+from app.services.payment import PaymentError, process_payment, process_refund
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
@@ -176,6 +175,104 @@ def pay_order(
     }
     db.update_record("orders", "id", order_id, updates)
     return {"ok": True, "transaction": result}
+
+
+# --- cancellation + refund endpoint ---
+@router.post("/{order_id}/cancel")
+def cancel_order(
+    order_id: str,
+    payload: Dict[str, Any] = Body(None),  # optional meta/expected_version
+    current_user: Dict[str, Any] = Depends(get_current_active_user),
+):
+    """
+    Cancel an order. Owner or admin may cancel.
+    - If order is paid, attempts to issue a refund via process_refund.
+    - On successful refund (or if not paid), transitions order to 'cancelled' and persists.
+    """
+    row = db.get_record("orders", "id", order_id) or db.get_record("orders", "order_id", order_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # authorization: owner (by username) or admin
+    username = current_user.get("username")
+    is_admin = current_user.get("is_admin", False)
+    if isinstance(is_admin, str):
+        is_admin = is_admin.strip().lower() in ("1", "true", "yes", "y", "t")
+    owner = str(row.get("user_id") or row.get("username") or "")
+    if not is_admin and owner != str(username):
+        raise HTTPException(status_code=403, detail="Not allowed to cancel this order")
+
+    status_now = str(row.get("status") or "").lower()
+    if status_now == "cancelled":
+        raise HTTPException(status_code=400, detail="Order already cancelled")
+
+    # If paid, attempt refund first
+    try:
+        amount = float(row.get("total_amount") or row.get("total") or 0.0)
+    except Exception:
+        amount = 0.0
+
+    refund_result = None
+    if status_now == "paid" and amount > 0:
+        try:
+            refund_result = process_refund(amount, {"transaction_id": row.get("last_payment_tx")})
+        except PaymentError as e:
+            raise HTTPException(status_code=502, detail=f"Refund gateway error: {e}")
+
+        if not refund_result.get("success"):
+            # persist failed refund attempt and surface error
+            db.update_record(
+                "orders",
+                "id",
+                order_id,
+                {
+                    "last_refund_tx": refund_result.get("transaction_id"),
+                    "last_refund_msg": refund_result.get("message") or "failure",
+                    "last_refund_success": False,
+                    "status": "refund_failed",
+                },
+            )
+            raise HTTPException(status_code=502, detail="Refund failed: " + (refund_result.get("message") or "unknown"))
+
+    # Now perform state transition via Order domain if possible (keeps history/version)
+    try:
+        order = Order.from_dict(row)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to load order")
+
+    try:
+        order.transition_to(
+            "cancelled",
+            actor=str(current_user.get("username") or current_user.get("id") or ""),
+            meta=payload.get("meta") if payload else None,
+            expected_version=payload.get("expected_version") if payload else None,
+        )
+    except InvalidTransition as it:
+        raise HTTPException(status_code=400, detail=str(it))
+    except OptimisticLockError as ol:
+        raise HTTPException(status_code=409, detail=str(ol))
+
+    updates = {
+        "status": order.status,
+        "status_history": json.dumps(order.status_history or [], ensure_ascii=False),
+        "version": int(order.version),
+    }
+
+    if refund_result:
+        updates.update(
+            {
+                "last_refund_tx": refund_result.get("transaction_id"),
+                "last_refund_msg": refund_result.get("message") or "ok",
+                "last_refund_success": True,
+                "refunded_at": datetime.utcnow().isoformat(sep=" "),
+            }
+        )
+
+    updated = db.update_record("orders", "id", order_id, updates)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to persist order update")
+
+    return {"ok": True, "order": updated}
 
 
 @router.put("/{order_id}/status", dependencies=[Depends(require_admin)])
