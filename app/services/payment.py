@@ -20,3 +20,16 @@ def process_payment(amount: float, payment_info: Dict[str, Any]) -> Dict[str, An
     return {"success": False, "transaction_id": None, "message": "declined"}
 
 
+def process_refund(amount: float, refund_info: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Minimal fake refund processor:
+    - If refund_info contains a transaction_id -> succeed
+    - Otherwise fail.
+    Returns similar shape to process_payment.
+    """
+    txid = refund_info.get("transaction_id")
+    if not txid:
+        return {"success": False, "transaction_id": None, "message": "missing transaction id"}
+    # produce a refund transaction id
+    rtx = f"refund_{os.urandom(6).hex()}"
+    return {"success": True, "transaction_id": rtx, "message": "refund_ok"}
