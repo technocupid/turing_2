@@ -9,7 +9,7 @@ from app.utils.images import save_image_upload, list_product_images, delete_prod
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.api.deps import get_db, get_current_active_user, require_admin
-from app.schemas.product import ProductCreate, ProductOut, ProductUpdate
+from app.api.schemas.product import ProductCreate, ProductOut, ProductUpdate
 from app.database import FileBackedDB
 from datetime import datetime
 

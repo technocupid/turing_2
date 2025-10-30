@@ -9,7 +9,7 @@ from app.database import FileBackedDB
 from app.models.order import Order, OrderItem
 from app.core.state_machine import InvalidTransition, OptimisticLockError
 from app.services.payment import PaymentError, process_payment, process_refund
-from app.schemas.order import OrderCreate, OrderResponse, PaymentRequest, CancelRequest
+from app.api.schemas.order import OrderCreate, OrderResponse, PaymentRequest, CancelRequest
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 

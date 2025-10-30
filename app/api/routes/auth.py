@@ -10,7 +10,7 @@ from jose import jwt
 import os
 
 from app.api.deps import get_db, JWT_SECRET, JWT_ALGORITHM
-from app.schemas.user import TokenResponse, UserOut
+from app.api.schemas.user import TokenResponse, UserOut
 from app.database import FileBackedDB
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
