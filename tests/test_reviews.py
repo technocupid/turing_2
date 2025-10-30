@@ -36,7 +36,7 @@ def test_create_review_invalid_rating(temp_user, client):
     product_id = product["id"]
 
     resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 10}, headers=_auth_header(user_id))
-    assert resp.status_code == 400
+    assert resp.status_code == 422
 
 
 def test_list_reviews_returns_all(temp_user, client):
