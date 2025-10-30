@@ -14,6 +14,7 @@ from app.api.routes import products as product_routes
 from app.api.routes import orders as order_routes
 from app.api.routes import wishlist as wishlist_routes
 from app.api.routes import reviews as reviews_routes
+from app.api.routes import cart as cart_routes
 from app.api.deps import oauth2_scheme
 
 logger = logging.getLogger("uvicorn.error")
@@ -69,6 +70,7 @@ app.include_router(product_routes.router)
 app.include_router(order_routes.router)
 app.include_router(wishlist_routes.router)
 app.include_router(reviews_routes.router)
+app.include_router(cart_routes.router)
 
 
 @app.get("/", tags=["root"])
