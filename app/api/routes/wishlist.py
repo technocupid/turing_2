@@ -1,8 +1,9 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
 from app.database import db
 from app.api.deps import oauth2_scheme
+from app.api.schemas.wishlist import WishlistCreate, WishlistItemOut, CartItemOut
 
 router = APIRouter(prefix="/api", tags=["wishlist"])
 
@@ -15,22 +16,20 @@ def _current_user_id(token: str = Depends(oauth2_scheme)) -> str:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing auth token")
     return token
 
-@router.get("/wishlist", response_model=List[Dict])
+@router.get("/wishlist", response_model=List[WishlistItemOut])
 def list_wishlist(user_id: str = Depends(_current_user_id)):
     items = db.list_records("wishlists")
     user_items = [i for i in items if str(i.get("user_id")) == str(user_id)]
     return user_items
 
-@router.post("/wishlist", status_code=201)
-def add_to_wishlist(payload: Dict, user_id: str = Depends(_current_user_id)):
-    product_id = payload.get("product_id")
-    if not product_id:
-        raise HTTPException(status_code=400, detail="product_id required")
+@router.post("/wishlist", status_code=201, response_model=WishlistItemOut)
+def add_to_wishlist(payload: WishlistCreate, user_id: str = Depends(_current_user_id)):
+    product_id = payload.product_id
     product = db.get_record("products", "id", product_id)
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    record = {"user_id": user_id, "product_id": product_id}
-    saved = db.create_record("wishlists", record)
+    record = {"user_id": user_id, "product_id": product_id, "added_at": datetime.utcnow().isoformat(sep=" ")}
+    saved = db.create_record("wishlists", record, id_field="id")
     return saved
 
 @router.delete("/wishlist/{item_id}", status_code=204)
@@ -46,7 +45,7 @@ def remove_wishlist_item(item_id: str, user_id: str = Depends(_current_user_id))
     return {}
 
 # --- new endpoint: move wishlist item to cart ---
-@router.post("/wishlist/{item_id}/move-to-cart", status_code=201)
+@router.post("/wishlist/{item_id}/move-to-cart", status_code=201, response_model=CartItemOut)
 def move_wishlist_item_to_cart(item_id: str, user_id: str = Depends(_current_user_id)):
     """
     Move a wishlist item into the user's cart.
