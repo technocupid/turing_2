@@ -3,26 +3,24 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from app.api.deps import get_db
 from app.models.cart import Cart, CartItem
 from app.database import FileBackedDB
+from app.api.schemas.cart import CartCreateSchema, CartItemSchema
 
 router = APIRouter(prefix="/api/cart", tags=["cart"])
 
-# module-level DB instance (consistent with other routers)
-db: FileBackedDB = get_db()
-
 
 @router.post("", response_model=Dict[str, Any])
-def create_cart(payload: Dict[str, Any]):
+def create_cart(payload: CartCreateSchema, db: FileBackedDB = Depends(get_db)):
     """
     Create a cart record. Payload shape accepted by app.models.cart.Cart.from_dict.
     Returns the stored row (including generated 'id').
     """
-    cart = Cart.from_dict(payload)
+    cart = Cart.from_dict(payload.dict())
     row = db.create_record("carts", cart.to_dict(), id_field="id")
     return row
 
 
 @router.get("/{cart_id}", response_model=Dict[str, Any])
-def get_cart(cart_id: str):
+def get_cart(cart_id: str, db: FileBackedDB = Depends(get_db)):
     """
     Retrieve a cart by id. Returns 404 if not found.
     """
@@ -33,7 +31,7 @@ def get_cart(cart_id: str):
 
 
 @router.post("/{cart_id}/items", response_model=Dict[str, Any])
-def add_item_to_cart(cart_id: str, item: Dict[str, Any]):
+def add_item_to_cart(cart_id: str, item: CartItemSchema, db: FileBackedDB = Depends(get_db)):
     """
     Append an item to an existing cart. This tries to update the existing cart row in-place.
     If the DB implementation provides update_record, it will be used. Otherwise we attempt
@@ -46,7 +44,7 @@ def add_item_to_cart(cart_id: str, item: Dict[str, Any]):
 
     # Build Cart object from stored row (handles stringified items)
     cart = Cart.from_dict(row)
-    cart.items.append(CartItem.from_dict(item))
+    cart.items.append(CartItem.from_dict(item.dict()))
     new_row = cart.to_dict()
     # ensure id preserved
     new_row["id"] = cart_id
