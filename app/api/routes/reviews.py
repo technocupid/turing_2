@@ -1,10 +1,11 @@
 from typing import List, Dict, Any
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.database import db
 from app.api.deps import oauth2_scheme, require_admin
+from app.api.schemas.reviews import ReviewCreate, ReviewOut, ResponseCreate
 
 router = APIRouter(prefix="/api/products", tags=["reviews"])
 
@@ -15,18 +16,14 @@ def _current_user_id(token: str = Depends(oauth2_scheme)) -> str:
     return token
 
 
-@router.post("/{product_id}/reviews", status_code=201)
-def create_review(product_id: str, payload: Dict[str, Any] = Body(...), user_id: str = Depends(_current_user_id)):
+@router.post("/{product_id}/reviews", status_code=201, response_model=ReviewOut)
+def create_review(product_id: str, payload: ReviewCreate = None, user_id: str = Depends(_current_user_id)):
     """
     Create a review for a product.
     Body: { "rating": int (1-5), "body": "optional text" }
     """
-    try:
-        rating = int(payload.get("rating"))
-    except Exception:
-        raise HTTPException(status_code=400, detail="rating must be an integer 1-5")
-    if rating < 1 or rating > 5:
-        raise HTTPException(status_code=400, detail="rating must be between 1 and 5")
+    # payload is validated by Pydantic (rating bounds, body default)
+    rating = int(payload.rating)
 
     # ensure product exists
     prod = db.get_record("products", "id", product_id) or db.get_record("products", "product_id", product_id)
@@ -37,14 +34,14 @@ def create_review(product_id: str, payload: Dict[str, Any] = Body(...), user_id:
         "product_id": product_id,
         "user_id": user_id,
         "rating": rating,
-        "body": payload.get("body", "") or "",
+        "body": payload.body or "",
         "created_at": datetime.utcnow().isoformat(sep=" "),
     }
     saved = db.create_record("reviews", review, id_field="id")
     return saved
 
 
-@router.get("/{product_id}/reviews", response_model=List[Dict])
+@router.get("/{product_id}/reviews", response_model=List[ReviewOut])
 def list_reviews(product_id: str):
     rows = db.list_records("reviews")
     out = [r for r in rows if str(r.get("product_id")) == str(product_id)]
@@ -82,7 +79,7 @@ def delete_review(product_id: str, review_id: str, user_id: str = Depends(_curre
 
 # --- Review response (admin-only) endpoints ---
 @router.post("/{product_id}/reviews/{review_id}/response", status_code=201)
-def create_review_response(product_id: str, review_id: str, payload: Dict[str, Any] = Body(...), admin_user: Dict[str, Any] = Depends(require_admin)):
+def create_review_response(product_id: str, review_id: str, payload: ResponseCreate = None, admin_user: Dict[str, Any] = Depends(require_admin)):
     """
     Create a single admin response to a review. Only one response per review allowed.
     Body: { "body": "response text" }
@@ -97,7 +94,7 @@ def create_review_response(product_id: str, review_id: str, payload: Dict[str, A
     if rec.get("response_body"):
         raise HTTPException(status_code=400, detail="Response already exists for this review")
 
-    response_body = (payload.get("body") or "").strip()
+    response_body = payload.body.strip()
     if not response_body:
         raise HTTPException(status_code=400, detail="Response body required")
 
@@ -112,7 +109,7 @@ def create_review_response(product_id: str, review_id: str, payload: Dict[str, A
     return saved
 
 @router.put("/{product_id}/reviews/{review_id}/response", status_code=200)
-def edit_review_response(product_id: str, review_id: str, payload: Dict[str, Any] = Body(...), admin_user: Dict[str, Any] = Depends(require_admin)):
+def edit_review_response(product_id: str, review_id: str, payload: ResponseCreate = None, admin_user: Dict[str, Any] = Depends(require_admin)):
     """
     Edit existing admin response to a review.
     Body: { "body": "new response text" }
@@ -126,7 +123,7 @@ def edit_review_response(product_id: str, review_id: str, payload: Dict[str, Any
     if not rec.get("response_body"):
         raise HTTPException(status_code=404, detail="Response not found")
 
-    response_body = (payload.get("body") or "").strip()
+    response_body = payload.body.strip()
     if not response_body:
         raise HTTPException(status_code=400, detail="Response body required")
 
