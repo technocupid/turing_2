@@ -1,5 +1,5 @@
 from typing import List, Optional, Any, Dict
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 import json
 
 
@@ -42,7 +42,7 @@ class OrderOut(BaseModel):
     version: Optional[int] = None
     status_history: Optional[Any] = None
 
-    @validator("items", pre=True)
+    @field_validator("items", mode="before")
     def _parse_items(cls, v):
         # DB may return items as JSON string; try to decode to list for response_model
         if isinstance(v, str):
@@ -53,9 +53,8 @@ class OrderOut(BaseModel):
                 return v
         return v
 
-    class Config:
-        # allow extra fields from DB rows (backwards compatibility)
-        extra = "allow"
+    # allow extra fields from DB rows (backwards compatibility)
+    model_config = ConfigDict(extra="allow")
 
 
 class OrderResponse(BaseModel):

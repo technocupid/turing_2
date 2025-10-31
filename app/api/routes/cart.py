@@ -14,7 +14,7 @@ def create_cart(payload: CartCreateSchema, db: FileBackedDB = Depends(get_db)):
     Create a cart record. Payload shape accepted by app.models.cart.Cart.from_dict.
     Returns the stored row (including generated 'id').
     """
-    cart = Cart.from_dict(payload.dict())
+    cart = Cart.from_dict(payload.model_dump())
     row = db.create_record("carts", cart.to_dict(), id_field="id")
     return row
 
@@ -44,7 +44,7 @@ def add_item_to_cart(cart_id: str, item: CartItemSchema, db: FileBackedDB = Depe
 
     # Build Cart object from stored row (handles stringified items)
     cart = Cart.from_dict(row)
-    cart.items.append(CartItem.from_dict(item.dict()))
+    cart.items.append(CartItem.from_dict(item.model_dump()))
     new_row = cart.to_dict()
     # ensure id preserved
     new_row["id"] = cart_id

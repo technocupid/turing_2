@@ -57,7 +57,7 @@ def create_order(
         items_payload = cart.get("items") or []
     elif payload.items:
         # pydantic already validated item shapes
-        items_payload = [it.dict() for it in payload.items]
+        items_payload = [it.model_dump() for it in payload.items]
     else:
         raise HTTPException(status_code=400, detail="Must pass cart_id or items")
 
@@ -206,7 +206,7 @@ def pay_order(
 
     # call payment service
     try:
-        result = process_payment(amount, payment.dict())
+        result = process_payment(amount, payment.model_dump())
     except PaymentError as e:
         raise HTTPException(status_code=502, detail=f"Payment gateway error: {e}")
 

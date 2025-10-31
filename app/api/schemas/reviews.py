@@ -1,14 +1,16 @@
 from typing import Optional
-from pydantic import BaseModel, Field, constr, conint, validator
+from pydantic import BaseModel, ConfigDict, Field, constr, conint, field_validator
 
 
 class ReviewCreate(BaseModel):
     rating: conint(ge=1, le=5) = Field(..., description="Rating between 1 and 5")
     body: str = ""
 
-    @validator("body", pre=True, always=True)
+    @field_validator("body", mode="before")
+    @classmethod
     def default_body(cls, v):
-        return v or ""
+        # convert None to empty string; leave other values (including "") unchanged
+        return "" if v is None else v
 
 
 class ResponseCreate(BaseModel):
@@ -27,5 +29,4 @@ class ReviewOut(BaseModel):
     response_created_at: Optional[str] = None
     response_updated_at: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(extra="allow")

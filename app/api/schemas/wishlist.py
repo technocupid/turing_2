@@ -1,7 +1,7 @@
 # --- Pydantic schemas for wishlist endpoints ---
 from typing import Optional
 from pydantic import BaseModel, Field
-
+from pydantic import BaseModel, Field, ConfigDict
 
 class WishlistCreate(BaseModel):
     product_id: str = Field(..., description="ID of the product to add to the wishlist")
@@ -12,8 +12,7 @@ class WishlistItemOut(BaseModel):
     product_id: str
     added_at: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(extra="allow")
 
 class CartItemOut(BaseModel):
     id: str
@@ -22,5 +21,4 @@ class CartItemOut(BaseModel):
     quantity: int
     added_at: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(extra="allow")
