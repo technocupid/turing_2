@@ -3,8 +3,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.database import db
-from app.api.deps import oauth2_scheme, require_admin
+from app.database import FileBackedDB
+from app.api.deps import oauth2_scheme, require_admin, get_db
 from app.api.schemas.reviews import ReviewCreate, ReviewOut, ResponseCreate
 
 router = APIRouter(prefix="/api/products", tags=["reviews"])
@@ -17,7 +17,7 @@ def _current_user_id(token: str = Depends(oauth2_scheme)) -> str:
 
 
 @router.post("/{product_id}/reviews", status_code=201, response_model=ReviewOut)
-def create_review(product_id: str, payload: ReviewCreate = None, user_id: str = Depends(_current_user_id)):
+def create_review(product_id: str, payload: ReviewCreate = None, user_id: str = Depends(_current_user_id), db: FileBackedDB = Depends(get_db)):
     """
     Create a review for a product.
     Body: { "rating": int (1-5), "body": "optional text" }
@@ -42,14 +42,14 @@ def create_review(product_id: str, payload: ReviewCreate = None, user_id: str = 
 
 
 @router.get("/{product_id}/reviews", response_model=List[ReviewOut])
-def list_reviews(product_id: str):
+def list_reviews(product_id: str, db: FileBackedDB = Depends(get_db)):
     rows = db.list_records("reviews")
     out = [r for r in rows if str(r.get("product_id")) == str(product_id)]
     return out
 
 
 @router.get("/{product_id}/reviews/summary", response_model=Dict)
-def reviews_summary(product_id: str):
+def reviews_summary(product_id: str, db: FileBackedDB = Depends(get_db)):
     rows = db.list_records("reviews")
     prod_rows = [r for r in rows if str(r.get("product_id")) == str(product_id)]
     if not prod_rows:
@@ -63,7 +63,7 @@ def reviews_summary(product_id: str):
 
 
 @router.delete("/{product_id}/reviews/{review_id}", status_code=204)
-def delete_review(product_id: str, review_id: str, user_id: str = Depends(_current_user_id)):
+def delete_review(product_id: str, review_id: str, user_id: str = Depends(_current_user_id), db: FileBackedDB = Depends(get_db)):
     rec = db.get_record("reviews", "id", review_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Review not found")
@@ -79,7 +79,7 @@ def delete_review(product_id: str, review_id: str, user_id: str = Depends(_curre
 
 # --- Review response (admin-only) endpoints ---
 @router.post("/{product_id}/reviews/{review_id}/response", status_code=201)
-def create_review_response(product_id: str, review_id: str, payload: ResponseCreate = None, admin_user: Dict[str, Any] = Depends(require_admin)):
+def create_review_response(product_id: str, review_id: str, payload: ResponseCreate = None, admin_user: Dict[str, Any] = Depends(require_admin), db: FileBackedDB = Depends(get_db)):
     """
     Create a single admin response to a review. Only one response per review allowed.
     Body: { "body": "response text" }
@@ -109,7 +109,7 @@ def create_review_response(product_id: str, review_id: str, payload: ResponseCre
     return saved
 
 @router.put("/{product_id}/reviews/{review_id}/response", status_code=200)
-def edit_review_response(product_id: str, review_id: str, payload: ResponseCreate = None, admin_user: Dict[str, Any] = Depends(require_admin)):
+def edit_review_response(product_id: str, review_id: str, payload: ResponseCreate = None, admin_user: Dict[str, Any] = Depends(require_admin), db: FileBackedDB = Depends(get_db)):
     """
     Edit existing admin response to a review.
     Body: { "body": "new response text" }
@@ -137,7 +137,7 @@ def edit_review_response(product_id: str, review_id: str, payload: ResponseCreat
     return saved
 
 @router.delete("/{product_id}/reviews/{review_id}/response", status_code=204)
-def delete_review_response(product_id: str, review_id: str, admin_user: Dict[str, Any] = Depends(require_admin)):
+def delete_review_response(product_id: str, review_id: str, admin_user: Dict[str, Any] = Depends(require_admin), db: FileBackedDB = Depends(get_db)):
     """
     Delete admin response attached to a review.
     """

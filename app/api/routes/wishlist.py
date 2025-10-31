@@ -1,8 +1,8 @@
 from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from datetime import datetime
-from app.database import db
-from app.api.deps import oauth2_scheme
+from app.database import FileBackedDB
+from app.api.deps import oauth2_scheme, get_db
 from app.api.schemas.wishlist import WishlistCreate, WishlistItemOut, CartItemOut
 
 router = APIRouter(prefix="/api", tags=["wishlist"])
@@ -17,13 +17,13 @@ def _current_user_id(token: str = Depends(oauth2_scheme)) -> str:
     return token
 
 @router.get("/wishlist", response_model=List[WishlistItemOut])
-def list_wishlist(user_id: str = Depends(_current_user_id)):
+def list_wishlist(user_id: str = Depends(_current_user_id), db: FileBackedDB = Depends(get_db)):
     items = db.list_records("wishlists")
     user_items = [i for i in items if str(i.get("user_id")) == str(user_id)]
     return user_items
 
 @router.post("/wishlist", status_code=201, response_model=WishlistItemOut)
-def add_to_wishlist(payload: WishlistCreate, user_id: str = Depends(_current_user_id)):
+def add_to_wishlist(payload: WishlistCreate, user_id: str = Depends(_current_user_id), db: FileBackedDB = Depends(get_db)):
     product_id = payload.product_id
     product = db.get_record("products", "id", product_id)
     if product is None:
@@ -33,7 +33,7 @@ def add_to_wishlist(payload: WishlistCreate, user_id: str = Depends(_current_use
     return saved
 
 @router.delete("/wishlist/{item_id}", status_code=204)
-def remove_wishlist_item(item_id: str, user_id: str = Depends(_current_user_id)):
+def remove_wishlist_item(item_id: str, user_id: str = Depends(_current_user_id), db: FileBackedDB = Depends(get_db)):
     rec = db.get_record("wishlists", "id", item_id)
     if not rec:
         raise HTTPException(status_code=404, detail="Wishlist item not found")
@@ -46,7 +46,7 @@ def remove_wishlist_item(item_id: str, user_id: str = Depends(_current_user_id))
 
 # --- new endpoint: move wishlist item to cart ---
 @router.post("/wishlist/{item_id}/move-to-cart", status_code=201, response_model=CartItemOut)
-def move_wishlist_item_to_cart(item_id: str, user_id: str = Depends(_current_user_id)):
+def move_wishlist_item_to_cart(item_id: str, user_id: str = Depends(_current_user_id), db: FileBackedDB = Depends(get_db)):
     """
     Move a wishlist item into the user's cart.
     - Validates ownership of wishlist item

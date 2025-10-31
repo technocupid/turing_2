@@ -15,7 +15,7 @@ from datetime import datetime
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
-db: FileBackedDB = get_db()
+# db: FileBackedDB = get_db()
 
 
 def _row_to_product_out(row: dict) -> ProductOut:
@@ -34,7 +34,12 @@ def _row_to_product_out(row: dict) -> ProductOut:
 
 
 @router.get("/", response_model=List[ProductOut])
-def list_products(q: Optional[str] = Query(None, description="search query (title)"), limit: int = 100, offset: int = 0):
+def list_products(
+    q: Optional[str] = Query(None, description="search query (title)"),
+    limit: int = 100,
+    offset: int = 0,
+    db: FileBackedDB = Depends(get_db),
+):
     """
     List products. Supports optional title substring search via `q`.
     """
@@ -51,7 +56,7 @@ def list_products(q: Optional[str] = Query(None, description="search query (titl
 
 
 @router.get("/{product_id}", response_model=ProductOut)
-def get_product(product_id: str):
+def get_product(product_id: str, db: FileBackedDB = Depends(get_db)):
     row = db.get_record("products", "id", product_id) or db.get_record("products", "product_id", product_id)
     if not row:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -59,7 +64,7 @@ def get_product(product_id: str):
 
 
 @router.post("/", response_model=ProductOut, dependencies=[Depends(require_admin)])
-def create_product(payload: ProductCreate, current_user: dict = Depends(get_current_active_user)):
+def create_product(payload: ProductCreate, current_user: dict = Depends(get_current_active_user), db: FileBackedDB = Depends(get_db)):
     """
     Create a new product (admin only). `created_by` is set to current_user['username'].
     """
@@ -71,7 +76,7 @@ def create_product(payload: ProductCreate, current_user: dict = Depends(get_curr
 
 
 @router.put("/{product_id}", response_model=ProductOut, dependencies=[Depends(require_admin)])
-def update_product(product_id: str, payload: ProductUpdate):
+def update_product(product_id: str, payload: ProductUpdate, db: FileBackedDB = Depends(get_db)):
     # find product
     row = db.get_record("products", "id", product_id) or db.get_record("products", "product_id", product_id)
     if not row:
@@ -87,7 +92,7 @@ def update_product(product_id: str, payload: ProductUpdate):
 
 
 @router.delete("/{product_id}", dependencies=[Depends(require_admin)])
-def delete_product(product_id: str):
+def delete_product(product_id: str, db: FileBackedDB = Depends(get_db)):
     # try by id then product_id
     ok = db.delete_record("products", "id", product_id)
     if not ok:
@@ -97,7 +102,7 @@ def delete_product(product_id: str):
     return {"ok": True}
 
 @router.post("/{product_id}/upload-image", dependencies=[Depends(require_admin)])
-async def upload_product_image(product_id: str, file: UploadFile = File(...)):
+async def upload_product_image(product_id: str, file: UploadFile = File(...), db: FileBackedDB = Depends(get_db)):
     """
     Upload an image for a product (admin only).
     Saves original + variants and appends the filename(s) to product.image_filenames (JSON list).
@@ -131,7 +136,7 @@ async def upload_product_image(product_id: str, file: UploadFile = File(...)):
 
 
 @router.get("/{product_id}/images", response_model=List[str])
-def get_product_images(product_id: str):
+def get_product_images(product_id: str, db: FileBackedDB = Depends(get_db)):
     """
     List image URLs for a product (public).
     """
@@ -152,7 +157,7 @@ def get_product_images(product_id: str):
 
 
 @router.delete("/{product_id}/images/{filename}", dependencies=[Depends(require_admin)])
-def delete_product_image_route(product_id: str, filename: str):
+def delete_product_image_route(product_id: str, filename: str, db: FileBackedDB = Depends(get_db)):
     """
     Delete an image file and remove from product's image_filenames array (admin only).
     """

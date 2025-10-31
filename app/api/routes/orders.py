@@ -13,7 +13,7 @@ from app.api.schemas.order import OrderCreate, OrderResponse, PaymentRequest, Ca
 
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 
-db: FileBackedDB = get_db()
+# removed module-level db; inject with Depends(...) in handlers
 
 
 def _compute_total_from_items(items: List[Dict[str, Any]]) -> float:
@@ -35,6 +35,7 @@ def _compute_total_from_items(items: List[Dict[str, Any]]) -> float:
 def create_order(
     payload: OrderCreate = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_active_user),
+    db: FileBackedDB = Depends(get_db),
 ):
     """
     Create an order.
@@ -83,7 +84,7 @@ def create_order(
 
 
 @router.get("/", response_model=List[Dict[str, Any]])
-def list_orders(current_user: Dict[str, Any] = Depends(get_current_active_user)):
+def list_orders(current_user: Dict[str, Any] = Depends(get_current_active_user), db: FileBackedDB = Depends(get_db)):
     """
     List orders for the current user. Admins see all orders.
     """
@@ -101,7 +102,7 @@ def list_orders(current_user: Dict[str, Any] = Depends(get_current_active_user))
 
 
 @router.get("/{order_id}")
-def get_order(order_id: str, current_user: Dict[str, Any] = Depends(get_current_active_user)):
+def get_order(order_id: str, current_user: Dict[str, Any] = Depends(get_current_active_user), db: FileBackedDB = Depends(get_db)):
     row = db.get_record("orders", "id", order_id) or db.get_record("orders", "order_id", order_id)
     if not row:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -119,8 +120,9 @@ def get_order(order_id: str, current_user: Dict[str, Any] = Depends(get_current_
 @router.post("/{order_id}/pay")
 def pay_order(
     order_id: str,
-    payment: PaymentRequest = Body(...),  # validated payment payload
+    payment: PaymentRequest = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_active_user),
+    db: FileBackedDB = Depends(get_db),
 ):
     """
     Charge for an order. This calls `process_payment` and updates order status to 'paid' on success.
@@ -179,8 +181,9 @@ def pay_order(
 @router.post("/{order_id}/cancel")
 def cancel_order(
     order_id: str,
-    payload: Optional[CancelRequest] = Body(None),  # typed cancel request
+    payload: Optional[CancelRequest] = Body(None),
     current_user: Dict[str, Any] = Depends(get_current_active_user),
+    db: FileBackedDB = Depends(get_db),
 ):
     """
     Cancel an order. Owner or admin may cancel.
@@ -274,7 +277,7 @@ def cancel_order(
 
 
 @router.put("/{order_id}/status", dependencies=[Depends(require_admin)])
-def set_order_status(order_id: str, payload: Dict[str, Any] = Body(...)):
+def set_order_status(order_id: str, payload: Dict[str, Any] = Body(...), db: FileBackedDB = Depends(get_db)):
     """
     Admin-only: change order.status. Payload: { "status": "shipped" }
     """
@@ -290,8 +293,9 @@ def set_order_status(order_id: str, payload: Dict[str, Any] = Body(...)):
 @router.post("/{order_id}/transition")
 def transition_order_status(
     order_id: str,
-    payload: Dict[str, Any] = Body(...),  # { "status": "shipped", "expected_version": 0 (optional) }
+    payload: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_active_user),
+    db: FileBackedDB = Depends(get_db),
 ):
     """
     Transition an order to another state using the Order state machine.

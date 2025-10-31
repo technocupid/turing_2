@@ -18,8 +18,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # token lifetime (minutes)
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
-db: FileBackedDB = get_db()  # module-level DB instance
-
 
 def _create_access_token(subject: str, expires_delta: int = ACCESS_TOKEN_EXPIRE_MINUTES) -> str:
     to_encode = {"sub": subject, "exp": datetime.utcnow() + timedelta(minutes=expires_delta)}
@@ -28,7 +26,7 @@ def _create_access_token(subject: str, expires_delta: int = ACCESS_TOKEN_EXPIRE_
 
 
 @router.post("/token", response_model=TokenResponse)
-def token(form_data: OAuth2PasswordRequestForm = Depends()):
+def token(form_data: OAuth2PasswordRequestForm = Depends(), db: FileBackedDB = Depends(get_db)):
     """
     Token endpoint used by OAuth2PasswordRequestForm clients.
     Returns a signed JWT containing 'sub' == user id (or username).
@@ -52,7 +50,7 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 @router.post("/login")
-def login_form(response: Response, username: str = Form(...), password: str = Form(...)):
+def login_form(response: Response, username: str = Form(...), password: str = Form(...), db: FileBackedDB = Depends(get_db)):
     """
     Simple form login used by UI tests: sets an 'access_token' cookie.
     """
@@ -85,12 +83,12 @@ def login_form(response: Response, username: str = Form(...), password: str = Fo
 
 # alias expected by tests
 @router.post("/login-form")
-def login_form_alias(response: Response, username: str = Form(...), password: str = Form(...)):
-    return login_form(response=response, username=username, password=password)
+def login_form_alias(response: Response, username: str = Form(...), password: str = Form(...), db: FileBackedDB = Depends(get_db)):
+    return login_form(response=response, username=username, password=password, db=db)
 
 
 @router.post("/register", response_model=UserOut, status_code=200)
-def register(user: Dict[str, Any]):
+def register(user: Dict[str, Any], db: FileBackedDB = Depends(get_db)):
     """
     Minimal register endpoint (used occasionally by tests). Expects a dict with username/email/password.
     Hashes the password and stores as 'password_hash'.
