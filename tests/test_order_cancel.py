@@ -2,22 +2,8 @@ import json
 from fastapi.testclient import TestClient
 
 
-def register_and_token(client: TestClient, username="u_test", email=None, password="pass"):
-    if email is None:
-        email = f"{username}@example.com"
-    # register
-    r = client.post("/api/auth/register", json={"username": username, "email": email, "password": password})
-    assert r.status_code == 200, r.text
-    # obtain token via OAuth2 form
-    r2 = client.post("/api/auth/token", data={"username": username, "password": password})
-    assert r2.status_code == 200, r2.text
-    token = r2.json().get("access_token")
-    assert token
-    return token
-
-
-def test_cancel_unpaid_order(client: TestClient):
-    token = register_and_token(client, username="user_unpaid")
+def test_cancel_unpaid_order(client: TestClient, register_and_token):
+    token = register_and_token(username="user_unpaid")
     headers = {"Authorization": f"Bearer {token}"}
     # create an order with inline items
     payload = {"items": [{"product_id": "p1", "unit_price": 10.0, "quantity": 2}], "shipping_address": "123 test"}
@@ -39,8 +25,8 @@ def test_cancel_unpaid_order(client: TestClient):
     assert updated.get("status") == "cancelled"
 
 
-def test_cancel_paid_order_with_refund(client: TestClient):
-    token = register_and_token(client, username="user_paid")
+def test_cancel_paid_order_with_refund(client: TestClient, register_and_token):
+    token = register_and_token(username="user_paid")
     headers = {"Authorization": f"Bearer {token}"}
     payload = {"items": [{"product_id": "p2", "unit_price": 5.0, "quantity": 1}], "shipping_address": "addr"}
     r = client.post("/api/orders", json=payload, headers=headers)

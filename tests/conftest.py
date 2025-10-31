@@ -5,6 +5,8 @@ import tempfile
 import shutil
 from pathlib import Path
 from datetime import datetime
+import io
+from PIL import Image
 
 import pytest
 from fastapi.testclient import TestClient
@@ -54,6 +56,78 @@ def temp_data_dir():
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+@pytest.fixture
+def auth_header():
+    """
+    Helper that returns a callable to build Authorization header from a token or user id.
+    Usage: hdr = auth_header(user_or_token)
+    """
+    def _h(tok: str):
+        return {"Authorization": f"Bearer {tok}"}
+    return _h
+
+
+@pytest.fixture
+def register_and_token(client):
+    """
+    Register a user via the API and return the access token.
+    Usage: token = register_and_token(username="u", email=None, password="pw")
+    """
+    def _fn(username="user", email=None, password="pass"):
+        if email is None:
+            email = f"{username}@example.com"
+        r = client.post("/api/auth/register", json={"username": username, "email": email, "password": password})
+        assert r.status_code in (200, 201), r.text
+        r2 = client.post("/api/auth/token", data={"username": username, "password": password})
+        assert r2.status_code == 200, r2.text
+        return r2.json().get("access_token")
+    return _fn
+
+
+@pytest.fixture
+def token_for(client):
+    """
+    Obtain an OAuth token for an existing username/password.
+    Usage: token = token_for(username, password)
+    """
+    def _fn(username: str, password: str):
+        resp = client.post("/api/auth/token", data={"username": username, "password": password})
+        assert resp.status_code == 200, resp.text
+        return resp.json().get("access_token")
+    return _fn
+
+
+@pytest.fixture
+def admin_auth_header(create_admin_in_db, client):
+    """
+    Create admin in DB (if not present) and return an Authorization header for admin.
+    Usage: hdr = admin_auth_header(username="admin", password="adminpass")
+    """
+    def _fn(username="admin", password="adminpass", email="admin@example.com"):
+        # create admin row if missing
+        create_admin_in_db(username=username, password=password, email=email)
+        resp = client.post("/api/auth/token", data={"username": username, "password": password})
+        assert resp.status_code == 200, resp.text
+        token = resp.json().get("access_token")
+        return {"Authorization": f"Bearer {token}"}
+    return _fn
+
+
+@pytest.fixture
+def make_sample_jpeg_bytes():
+    """
+    Return a callable that generates JPEG bytes for tests that need image uploads.
+    Usage: jpg = make_sample_jpeg_bytes(size=(200,200))
+    """
+    def _fn(size=(200, 200), color=(180, 120, 60)):
+        bio = io.BytesIO()
+        im = Image.new("RGB", size, color)
+        im.save(bio, format="JPEG", quality=85)
+        bio.seek(0)
+        return bio.read()
+    return _fn
 
 
 def create_admin_in_db(username="admin", password="adminpass", email="admin@example.com"):
