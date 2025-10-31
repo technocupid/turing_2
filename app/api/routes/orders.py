@@ -67,6 +67,57 @@ def create_order(
     # compute total
     total_amount = _compute_total_from_items(items_payload)
 
+    # --- RESERVE INVENTORY: ensure products exist and decrease stock ---
+    # Track reserved adjustments so we can roll them back if persistence fails
+    reserved = []
+    try:
+        for it in items_payload:
+            pid = it.get("product_id")
+            try:
+                qty = int(float(it.get("quantity", it.get("qty", 1))))
+            except Exception:
+                qty = 1
+            if pid is None:
+                raise HTTPException(status_code=400, detail="product_id required for each item")
+
+            prod = db.get_record("products", "id", pid)
+            # try both id and product_id keys
+            prod = prod or db.get_record("products", "product_id", pid)
+            # If product is not present in the catalog, skip inventory reservation.
+            # This preserves previous behavior used by some tests that create orders
+            # with arbitrary product_ids (e.g. "p1", "p2") without a product record.
+            if not prod:
+                continue
+
+            # normalize stock
+            try:
+                stock = int(float(prod.get("stock", 0)))
+            except Exception:
+                stock = 0
+
+            if stock < qty:
+                # rollback any prior reservations
+                for r in reserved:
+                    db.update_record("products", "id", r["id"], {"stock": r["prev_stock"]})
+                raise HTTPException(status_code=400, detail=f"Insufficient stock for product {pid}")
+
+            new_stock = stock - qty
+            updated = db.update_record("products", "id", pid, {"stock": new_stock})
+            if not updated:
+                # rollback any prior reservations
+                for r in reserved:
+                    db.update_record("products", "id", r["id"], {"stock": r["prev_stock"]})
+                raise HTTPException(status_code=500, detail=f"Failed to reserve inventory for product {pid}")
+
+            reserved.append({"id": pid, "qty": qty, "prev_stock": stock})
+    except HTTPException:
+        raise
+    except Exception:
+        # unexpected error -> rollback and surface 500
+        for r in reserved:
+            db.update_record("products", "id", r["id"], {"stock": r["prev_stock"]})
+        raise HTTPException(status_code=500, detail="Inventory reservation failed")
+
     # create Order model
     order = Order(
         id=None,
@@ -80,6 +131,11 @@ def create_order(
 
     # persist
     saved = db.create_record("orders", order.to_dict(), id_field="id")
+    if not saved:
+        # rollback reserved inventory if order could not be persisted
+        for r in reserved:
+            db.update_record("products", "id", r["id"], {"stock": r["prev_stock"]})
+        raise HTTPException(status_code=500, detail="Failed to create order")
     return {"ok": True, "order": saved}
 
 
