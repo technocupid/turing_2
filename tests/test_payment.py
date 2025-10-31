@@ -1,11 +1,9 @@
 # tests/test_payment.py
 import pytest
 
-def test_pay_order_flow(client, seeded_admin):
-    # Setup admin, product, user, order (reuse patterns)
-    resp = client.post("/api/auth/token", data={"username":"admin","password":"adminpass"})
-    admin_token = resp.json()["access_token"]
-    headers_admin = {"Authorization": f"Bearer {admin_token}"}
+def test_pay_order_flow(client, seeded_admin, admin_auth_header):
+    # use admin_auth_header fixture
+    headers_admin = admin_auth_header()
 
     # create product
     prod_payload = {"title":"Lamp","price":250.0,"stock":2}

@@ -100,7 +100,7 @@ def token_for(client):
 
 
 @pytest.fixture
-def admin_auth_header(create_admin_in_db, client):
+def admin_auth_header(client):
     """
     Create admin in DB (if not present) and return an Authorization header for admin.
     Usage: hdr = admin_auth_header(username="admin", password="adminpass")

@@ -4,18 +4,13 @@ import io
 import json
 from pathlib import Path
 from datetime import datetime
-
-import pytest
 from PIL import Image
 from app.core.security import hash_password
 
 # ensure project root is importable (conftest may already do this)
 from app.database import db as file_db
 from app.config import settings
-from fastapi.testclient import TestClient
-from app.main import app
-
-client = TestClient(app)
+# use client fixture and make_sample_jpeg_bytes/admin_auth_header from conftest
 
 
 def make_sample_jpeg_bytes(size=(200, 200), color=(180, 120, 60)):
@@ -25,19 +20,6 @@ def make_sample_jpeg_bytes(size=(200, 200), color=(180, 120, 60)):
     im.save(bio, format="JPEG", quality=85)
     bio.seek(0)
     return bio.read()
-
-
-@pytest.fixture
-def isolated_image_dir(tmp_path, monkeypatch):
-    """
-    Create images directory under a temp path and point settings.image_dir to it.
-    Returns the base image_dir path string.
-    """
-    image_dir = tmp_path / "static_images"
-    image_dir = str(image_dir)  # convert to plain str for settings
-    # monkeypatch the settings used by the app
-    monkeypatch.setattr(settings, "image_dir", image_dir, raising=False)
-    return image_dir
 
 
 def create_admin_in_db(username="admin", password="adminpass", email="admin@example.com"):
@@ -58,14 +40,14 @@ def create_admin_in_db(username="admin", password="adminpass", email="admin@exam
     return created
 
 
-def get_auth_header_for(username="admin", password="adminpass"):
+def get_auth_header_for(client, username="admin", password="adminpass"):
     resp = client.post("/api/auth/token", data={"username": username, "password": password})
     assert resp.status_code == 200, resp.text
     token = resp.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
-def create_product_as_admin(admin_header, title="ImgTest", price=100.0):
+def create_product_as_admin(client, admin_header, title="ImgTest", price=100.0):
     payload = {
         "title": title,
         "description": "Image test product",
@@ -78,7 +60,7 @@ def create_product_as_admin(admin_header, title="ImgTest", price=100.0):
     return resp.json()
 
 
-def test_image_upload_list_delete_flow(tmp_path, isolated_image_dir):
+def test_image_upload_list_delete_flow(client, tmp_path):
     """
     Full flow:
       - create admin user in test DB
@@ -94,15 +76,15 @@ def test_image_upload_list_delete_flow(tmp_path, isolated_image_dir):
     assert admin_row["username"] == "admin"
 
     # admin header
-    admin_header = get_auth_header_for(username="admin", password="adminpass")
+    admin_header = get_auth_header_for(client, username="admin", password="adminpass")
 
     # create product
-    product = create_product_as_admin(admin_header)
+    product = create_product_as_admin(client, admin_header)
     product_id = product.get("id")
     assert product_id
 
     # expected product images directory
-    base_image_dir = isolated_image_dir
+    base_image_dir = Path('static/images')
     expected_product_dir = Path(base_image_dir) / "products" / str(product_id)
     # ensure parent exists
     expected_product_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -144,6 +126,7 @@ def test_image_upload_list_delete_flow(tmp_path, isolated_image_dir):
 
     # verify file removed from disk (and any variants)
     assert not (expected_product_dir / original_fname).exists()
+    os.rmdir(expected_product_dir)  # remove product dir if empty
 
     # non-admin cannot upload: create temp non-admin user
     uname = "tempu"

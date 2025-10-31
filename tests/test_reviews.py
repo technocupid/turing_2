@@ -2,11 +2,8 @@ import uuid
 
 from app.database import db as file_db
 
-def _auth_header(user_id: str):
-    return {"Authorization": f"Bearer {user_id}"}
 
-
-def test_create_review_success(temp_user, client):
+def test_create_review_success(temp_user, client, auth_header):
     user = temp_user["row"]
     user_id = user["id"]
 
@@ -17,7 +14,7 @@ def test_create_review_success(temp_user, client):
     )
     product_id = product["id"]
 
-    resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 5, "body": "Great!"}, headers=_auth_header(user_id))
+    resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 5, "body": "Great!"}, headers=auth_header(user_id))
     assert resp.status_code == 201, resp.text
     created = resp.json()
     assert created["product_id"] == product_id
@@ -26,7 +23,7 @@ def test_create_review_success(temp_user, client):
     assert "id" in created
 
 
-def test_create_review_invalid_rating(temp_user, client):
+def test_create_review_invalid_rating(temp_user, client, auth_header):
     user_id = temp_user["row"]["id"]
     product = file_db.create_record(
         "products",
@@ -35,11 +32,11 @@ def test_create_review_invalid_rating(temp_user, client):
     )
     product_id = product["id"]
 
-    resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 10}, headers=_auth_header(user_id))
+    resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 10}, headers=auth_header(user_id))
     assert resp.status_code == 422
 
 
-def test_list_reviews_returns_all(temp_user, client):
+def test_list_reviews_returns_all(temp_user, client, auth_header):
     user1 = temp_user["row"]
     user1_id = user1["id"]
     # create another user
@@ -57,9 +54,9 @@ def test_list_reviews_returns_all(temp_user, client):
     )
     product_id = product["id"]
 
-    r1 = client.post(f"/api/products/{product_id}/reviews", json={"rating": 4}, headers=_auth_header(user1_id))
+    r1 = client.post(f"/api/products/{product_id}/reviews", json={"rating": 4}, headers=auth_header(user1_id))
     assert r1.status_code == 201
-    r2 = client.post(f"/api/products/{product_id}/reviews", json={"rating": 3}, headers=_auth_header(user2_id))
+    r2 = client.post(f"/api/products/{product_id}/reviews", json={"rating": 3}, headers=auth_header(user2_id))
     assert r2.status_code == 201
 
     resp = client.get(f"/api/products/{product_id}/reviews")
@@ -70,7 +67,7 @@ def test_list_reviews_returns_all(temp_user, client):
     assert 4 in ratings and 3 in ratings
 
 
-def test_delete_review_permissions(temp_user, client):
+def test_delete_review_permissions(temp_user, client, auth_header):
     user1 = temp_user["row"]
     user1_id = user1["id"]
     other = file_db.create_record(
@@ -87,17 +84,17 @@ def test_delete_review_permissions(temp_user, client):
     )
     product_id = product["id"]
 
-    create_resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 5}, headers=_auth_header(user1_id))
+    create_resp = client.post(f"/api/products/{product_id}/reviews", json={"rating": 5}, headers=auth_header(user1_id))
     assert create_resp.status_code == 201
     review = create_resp.json()
     review_id = review["id"]
 
     # other user attempts delete -> forbidden
-    resp = client.delete(f"/api/products/{product_id}/reviews/{review_id}", headers=_auth_header(user2_id))
+    resp = client.delete(f"/api/products/{product_id}/reviews/{review_id}", headers=auth_header(user2_id))
     assert resp.status_code == 403
 
     # owner deletes -> 204
-    resp = client.delete(f"/api/products/{product_id}/reviews/{review_id}", headers=_auth_header(user1_id))
+    resp = client.delete(f"/api/products/{product_id}/reviews/{review_id}", headers=auth_header(user1_id))
     assert resp.status_code == 204
 
     # ensure removed
@@ -105,7 +102,7 @@ def test_delete_review_permissions(temp_user, client):
     assert all(r.get("id") != review_id for r in resp.json())
 
 
-def test_reviews_summary_average_and_count(temp_user, client):
+def test_reviews_summary_average_and_count(temp_user, client, auth_header):
     user1 = temp_user["row"]
     user1_id = user1["id"]
 
@@ -116,7 +113,7 @@ def test_reviews_summary_average_and_count(temp_user, client):
     )
     product_id = product["id"]
 
-    client.post(f"/api/products/{product_id}/reviews", json={"rating": 5}, headers=_auth_header(user1_id))
+    client.post(f"/api/products/{product_id}/reviews", json={"rating": 5}, headers=auth_header(user1_id))
     # create second user and review
     other = file_db.create_record(
         "users",
@@ -124,7 +121,7 @@ def test_reviews_summary_average_and_count(temp_user, client):
         id_field="id",
     )
     user2_id = other["id"]
-    client.post(f"/api/products/{product_id}/reviews", json={"rating": 3}, headers=_auth_header(user2_id))
+    client.post(f"/api/products/{product_id}/reviews", json={"rating": 3}, headers=auth_header(user2_id))
 
     resp = client.get(f"/api/products/{product_id}/reviews/summary")
     assert resp.status_code == 200
