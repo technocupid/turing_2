@@ -134,7 +134,12 @@ class FileBackedDB:
             data[id_field] = uuid.uuid4().hex
         # normalize types to string where needed
         new_row = {k: ("" if v is None else v) for k, v in data.items()}
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True, sort=False)
+        # Ensure DataFrame has all columns from new_row. Add any missing columns with empty default.
+        for k in new_row.keys():
+            if k not in df.columns:
+                df[k] = ""
+        # Append the new row by direct assignment to avoid concat-related FutureWarning.
+        df.loc[len(df)] = [new_row.get(col, "") for col in df.columns]
         self._write_df(table, df)
         return data
 
